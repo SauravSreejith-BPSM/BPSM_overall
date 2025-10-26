@@ -4,9 +4,13 @@ import os,subprocess,shutil
 
 #reading in the local seqeunce and remote sequence
 
-local_seq= open("plain_genomic_seq.txt").read().restrip().upper()
+local_seq= open("plain_genomic_seq.txt").read().rstrip().upper()
 
-remote_seq= open("lecture12new.fasta").read().restrip().upper()
+remote_seq= open("lecture12new.fasta").read().rstrip().upper()
+
+print (open("plain_genomic_seq.txt").read())
+
+print (open("lecture12new.fasta").read())
 
 #remove all non-protein related bases
 
@@ -26,6 +30,11 @@ local_seq_noncoding1 = local_seq[0:62]
 local_seq_exon = local_seq[62:91]
 
 local_seq_noncoding2 = local_seq[91:]
+
+print (remote_seq_exon)
+
+print (local_seq_exon)
+
 
 
 
