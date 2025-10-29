@@ -1,0 +1,26 @@
+#! /user/bin/python3
+
+counter=0
+
+exon_input= open('exons.txt').read().rsplit()
+
+
+for exons in exon_input :
+ counter += 1
+ print(counter,exons)
+
+genomic_dna= open('genomic_dna2.txt').read().upper()
+
+counter = 0
+
+with open('Exercise_coding_sequence.fasta','w') as fullcoding:
+
+ fullcoding.write('Lecture13_exercise2')
+ for exons in exon_input:
+  counter += 1
+  start= int(exons.split(',')[0])-1
+  end= int(exons.split(',')[1])
+  exon_interest= genomic_dna[start:end]
+  fullcoding.write(exon_interest)
+  region= 'Exon'+ str(counter)+ ' ' +str(exons)+ 'runs from index position' +str(start)+ 'upto' +str(end)
+  print(region)
