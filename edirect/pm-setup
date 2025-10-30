@@ -1,0 +1,80 @@
+#!/bin/sh
+
+# Public domain notice for all NCBI EDirect scripts is located at:
+# https://www.ncbi.nlm.nih.gov/books/NBK179288/#chapter6.Public_Domain_Notice
+
+# pm-setup
+
+pth=$( dirname "$0" )
+
+case "$pth" in
+  /* )
+    ;; # already absolute
+  *  )
+    pth=$(cd "$pth" && pwd)
+    ;;
+esac
+
+case ":$PATH:" in
+  *:"$pth":* )
+    ;;
+  * )
+    PATH="$PATH:$pth"
+    export PATH
+    ;;
+esac
+
+# handle common flags - dot command is equivalent of "source"
+
+if [ ! -f "$pth"/xcommon.sh ]
+then
+  echo "ERROR: Unable to find '$pth/xcommon.sh' file" >&2
+  exit 1
+fi
+
+. "$pth"/xcommon.sh
+
+# initialize specific flags
+
+dbase=""
+
+while [ $# -gt 0 ]
+do
+  case "$1" in
+    -db )
+      dbase=$2
+      shift
+      shift
+      ;;
+    -* )
+      exec >&2
+      echo "$0: Unrecognized option $1" >&2
+      exit 1
+      ;;
+    * )
+      break
+      ;;
+  esac
+done
+
+if [ -z "$dbase" ]
+then
+  echo "Must supply database in -db argument" >&2
+  exit 1
+fi
+
+SetLocalArchiveFolders "$dbase"
+
+for dir in Archive Sentinels Data Postings Source Extras Index Invert Merged Scratch Current Indexed Inverted
+do
+  target=$( GetLocalArchiveFolder "$dir" )
+  # remove trailing slash
+  target=${target%/}
+  if [ ! -d "$target" ]
+  then
+    echo "Creating $target for $dir" >&2
+    mkdir -p "$target"
+  fi
+done
+
+exit 0

@@ -1,0 +1,380 @@
+#!/bin/bash
+
+# Public domain notice for all NCBI EDirect scripts is located at:
+# https://www.ncbi.nlm.nih.gov/books/NBK179288/#chapter6.Public_Domain_Notice
+
+# pm-clean
+
+pth=$( dirname "$0" )
+
+case "$pth" in
+  /* )
+    ;; # already absolute
+  *  )
+    pth=$(cd "$pth" && pwd)
+    ;;
+esac
+
+case ":$PATH:" in
+  *:"$pth":* )
+    ;;
+  * )
+    PATH="$PATH:$pth"
+    export PATH
+    ;;
+esac
+
+# handle common flags - dot command is equivalent of "source"
+
+if [ ! -f "$pth"/xcommon.sh ]
+then
+  echo "ERROR: Unable to find '$pth/xcommon.sh' file" >&2
+  exit 1
+fi
+
+. "$pth"/xcommon.sh
+
+# initialize specific flags
+
+total_start=$(date "+%s")
+
+dbase=""
+folder=""
+level=""
+fields=""
+
+clean=false
+scrap=false
+scrub=false
+scour=false
+erase=false
+zap=false
+
+scratch=false
+
+while [ $# -gt 0 ]
+do
+  case "$1" in
+    -db | -dbase )
+      dbase=$2
+      shift
+      shift
+      ;;
+    -project | -extern | -folder )
+      folder=$2
+      shift
+      shift
+      ;;
+    -level )
+      level=$2
+      shift
+      shift
+      ;;
+    -fields )
+      fields=$2
+      shift
+      shift
+      ;;
+    -* )
+      exec >&2
+      echo "$0: Unrecognized option $1, cleaning must be done separately" >&2
+      exit 1
+      ;;
+    * )
+      break
+      ;;
+  esac
+done
+
+if [ -z "$dbase" ] || [ "$dbase" = "" ]
+then
+  DisplayError "Missing -db argument"
+  exit 1
+fi
+
+if [ -z "$folder" ] || [ "$folder" = "" ]
+then
+  # default to extern folder with same name as database
+  folder="$dbase"
+fi
+
+# protect against sub-project deleting main database archive
+if [ "$folder" != "$dbase" ]
+then
+  level="scratch"
+fi
+
+case "$level" in
+  clean | clear )
+    # delete Indices contents and Increment files
+    clean=true
+    shift
+    ;;
+  scrap )
+    # only delete Postings directories
+    scrap=true
+    shift
+    ;;
+  scrub )
+    clean=true
+    # and delete Postings directories
+    scrub=true
+    shift
+    ;;
+  scour )
+    clean=true
+    scrub=true
+    # and delete Data, Archive, and Sentinels directories
+    scour=true
+    shift
+    ;;
+  erase )
+    clean=true
+    scrub=true
+    scour=true
+    # and delete Extras directory contents
+    erase=true
+    shift
+    ;;
+  zap )
+    clean=true
+    scrub=true
+    scour=true
+    erase=true
+    # and delete Source records and all remaining directories
+    # zap=true
+    shift
+    ;;
+  scratch )
+    # only delete contents of Scratch directories
+    scratch=true
+    shift
+    ;;
+  -* )
+    exec >&2
+    echo "$0: Unrecognized option $1, cleaning must be done separately" >&2
+    exit 1
+    ;;
+  * )
+    break
+    ;;
+esac
+
+SetLocalArchiveFolders "$dbase" "$folder"
+
+if [ "$scratch" = true ]
+then
+  if [ -n "$scratchBase" ] && [ -d "$scratchBase" ]
+  then
+    echo "Deleting Scratch Directories" >&2
+    cd "$scratchBase"
+    for dir in "$scratchBase"/*
+    do
+      if [ -d "$dir" ]
+      then
+        rm -rf "$dir" &
+      fi
+    done
+  fi
+
+  if [ -n "$postingsBase" ] && [ -d "$postingsBase" ] && [ "$fields" != "" ]
+  then
+    echo "Deleting Postings" >&2
+
+    cd "$postingsBase"
+    echo "$fields" |
+    xargs -n1 echo |
+    while read dir
+    do
+      rm -rf "$postingsBase/$dir" &
+    done
+  fi
+
+  wait
+
+  # do not touch regular incrementally-indexed data from primary source records
+  exit 0
+fi
+
+if [ "$clean" = true ]
+then
+  if [ -n "$indexBase" ] && [ -d "$indexBase" ]
+  then
+    echo "Deleting Index" >&2
+    target="$indexBase"
+    find "$target" -name "*.e2x" -delete
+    find "$target" -name "*.e2x.gz" -delete
+    cd "$indexBase"
+    rm -rf * &
+  fi
+
+  if [ -n "$invertBase" ] && [ -d "$invertBase" ]
+  then
+    echo "Deleting Invert" >&2
+    target="$invertBase"
+    find "$target" -name "*.inv" -delete
+    find "$target" -name "*.inv.gz" -delete
+    cd "$invertBase"
+    rm -rf * &
+  fi
+
+  if [ -n "$mergedBase" ] && [ -d "$mergedBase" ]
+  then
+    echo "Deleting Merged" >&2
+    target="$mergedBase"
+    find "$target" -name "*.mrg" -delete
+    find "$target" -name "*.mrg.gz" -delete
+  fi
+
+  sleep 1
+fi
+
+wait
+
+if [ "$scrub" = true ] || [ "$scrap" = true ]
+then
+  if [ -n "$postingsBase" ] && [ -d "$postingsBase" ]
+  then
+    echo "Deleting Postings" >&2
+    target="$postingsBase"
+    find "$target" -name "*.mst" -delete
+    find "$target" -name "*.pst" -delete
+    find "$target" -name "*.trm" -delete
+    find "$target" -name "*.ofs" -delete
+    find "$target" -name "*.uqi" -delete
+
+    wait
+
+    cd "$postingsBase"
+    for dir in "$postingsBase"/*
+    do
+      if [ -d "$dir" ]
+      then
+        rm -rf "$dir" &
+      fi
+    done
+  fi
+
+  sleep 1
+fi
+
+wait
+
+if [ "$scour" = true ]
+then
+  if [ -n "$dataBase" ] && [ -d "$dataBase" ]
+  then
+    echo "Deleting Data" >&2
+    cd "$dataBase"
+    rm -rf *
+  fi
+
+  if [ -n "$archiveBase" ] && [ -d "$archiveBase" ]
+  then
+    echo "Deleting Archive" >&2
+    target="$archiveBase"
+    find "$target" -name "*.xml.gz" -delete
+
+    wait
+
+    cd "$archiveBase"
+    for dir in "$archiveBase"/*
+    do
+      if [ -d "$dir" ] && [ "$dir" != "Sentinels" ]
+      then
+        rm -rf "$dir" &
+      fi
+    done
+  fi
+
+  sentinelsBase=$( echo "${archiveBase}/Sentinels" )
+  if [ -n "$sentinelsBase" ] && [ -d "$sentinelsBase" ]
+  then
+    echo "Deleting Sentinels" >&2
+    target="$sentinelsBase"
+    rm -rf "*.snt"
+  fi
+
+  rm -f versioned.uid
+
+  if [ ! -d "$sentinelsBase" ] && [ "$erase" = false ] && [ "$zap" = false ]
+  then
+    mkdir -p "$sentinelsBase"
+  fi
+
+  sleep 1
+fi
+
+wait
+
+if [ "$erase" = true ]
+then
+  if  [ -n "$extrasBase" ] && [ -d "$extrasBase" ]
+  then
+    echo "Deleting Extras" >&2
+    cd "$extrasBase"
+    rm -rf *
+  fi
+
+  sleep 1
+fi
+
+wait
+
+if [ "$zap" = true ]
+then
+  for dir in Archive Data Postings Extras Index Invert Merged Scratch
+  do
+    target=$( GetLocalArchiveFolder "$dir" )
+    # remove trailing slash
+    target=${target%/}
+    # remove trailing folder to get volume name
+    volume=${target%/"${dbase}"}
+    echo "$volume"
+  done |
+  sort -f | uniq -i |
+  while read dir
+  do
+    if [ -n "$dir" ] && [ -d "$dir" ]
+    then
+      echo "Deleting $dir" >&2
+      cd "$dir"
+      rm -rf *
+    fi
+  done
+
+  sleep 1
+fi
+
+wait
+
+function PrintTotalElapsedTime {
+  local L=$1
+  local T=$2
+  local D=$((T/60/60/24))
+  local H=$((T/60/60%24))
+  local M=$((T/60%60))
+  local S=$((T%60))
+  printf '%s %d second' "$L" $T 1>&2
+  (( $T > 1 )) && printf 's' 1>&2
+  if [ "$T" -gt 59 ]
+  then
+    printf ', or' 1>&2
+    (( $D > 0 )) && printf ' %d day' $D 1>&2
+    (( $D > 1 )) && printf 's' 1>&2
+    (( $H > 0 )) && printf ' %d hour' $H 1>&2
+    (( $H > 1 )) && printf 's' 1>&2
+    (( $M > 0 )) && printf ' %d minute' $M 1>&2
+    (( $M > 1 )) && printf 's' 1>&2
+    (( $S > 0 )) && printf ' %d second' $S 1>&2
+    (( $S > 1 )) && printf 's' 1>&2
+  fi
+  printf '\n' 1>&2
+}
+
+total_end=$(date "+%s")
+total=$((total_end - total_start))
+TOT=$total
+PrintTotalElapsedTime "TOT" "$TOT"
+echo "" >&2
+exit 0

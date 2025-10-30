@@ -1,0 +1,123 @@
+# Public domain notice for all NCBI EDirect scripts is located at:
+# https://www.ncbi.nlm.nih.gov/books/NBK179288/#chapter6.Public_Domain_Notice
+
+# populate-pubmed
+
+ReportVersioned() {
+  inp="$1"
+  pmidlist=.TO-REPORT
+  xtract -input "$inp" -pattern PubmedArticle \
+    -block MedlineCitation/PMID -if "@Version" -gt 1 -element "PMID" < /dev/null |
+  sort -n | uniq > $pmidlist
+  if [ -s $pmidlist ]
+  then
+    cat "$pmidlist" >> "${archiveBase}/versioned.uid"
+  fi
+  rm $pmidlist
+}
+
+PMStash() {
+
+  fl="$1"
+
+  rm -f "versioned.xml.gz"
+  rm -f "versioned.snt"
+
+  needToReport=true
+  timeout=100
+  if [ "$pma2pme" = true ]
+  then
+    timeout=200
+  fi
+
+  base=${fl%.xml.gz}
+  secnds_start=$(date "+%s")
+  echo "$base.xml"
+
+  gunzip -c "$fl" |
+  transmute -strict -normalize pubmed |
+  transmute -compress -strict -wrp PubmedArticleSet \
+    -pattern "PubmedArticleSet/*" -format flush > "$base.xml"
+  rchive -gzip -db "$dbase" -input "$base.xml" \
+    -archive "${archiveBase}" "${indexBase}" "${invertBase}" \
+    -index MedlineCitation/PMID^Version -pattern PubmedArticle < /dev/null
+
+  cat "$base.xml" |
+  xtract -pattern DeleteCitation -block PMID -tab "\n" -sep "." -element "PMID" |
+  sort -n | uniq |
+  rchive -gzip -db "$dbase" -delete "${archiveBase}" "${indexBase}" "${invertBase}"
+
+  ReportVersioned "$base.xml"
+
+  touch "${archiveBase}/Sentinels/$base.snt"
+  rm "$base.xml"
+
+  secnds_end=$(date "+%s")
+  secnds=$((secnds_end - secnds_start))
+  if [ "$needToReport" = true ]
+  then
+    if [ "$secnds" -gt "$timeout" ]
+    then
+      echo ""
+      echo "ARCHIVING IS SLOWER THAN EXPECTED."
+      echo ""
+      echo "PLEASE ENSURE THAT ANTIVIRUS SCANNING AND CONTENT INDEXING ARE DISABLED,"
+      echo "AND THAT TRIM SUPPORT IS ENABLED FOR THE SOLID STATE DRIVE."
+      echo ""
+      if [ "$osname" = "Darwin" ]
+      then
+        master=${archive%/Archive/}
+        echo "  sudo mdutil -i off ${master}"
+        echo "  sudo mdutil -E ${master}"
+        echo "  sudo touch ${master}/.fseventsd/no_log"
+        echo ""
+      fi
+      needToReport=false
+    fi
+  fi
+}
+
+if [ -d "${sourceBase}" ]
+then
+  cd "${sourceBase}"
+
+  first=""
+  last=""
+
+  for fl in *.xml.gz
+  do
+    base=${fl%.xml.gz}
+    if [ -z "$first" ]
+    then
+      first="$base"
+    fi
+    last="$base"
+  done
+
+  if [ -n "$first" ] && [ -n "$last" ]
+  then
+    fst=$( echo "$first" | cut -c 7-8 )
+    lst=$( echo "$last" | cut -c 7-8 )
+    if [ -n "$fst" ] && [ -n "$lst" ] && [ "$fst" != "$lst" ]
+    then
+      echo "" >&2
+      echo "ERROR: Local PubMed archive contains a mixture of years, from 20${fst} to 20${lst}" >&2
+      echo "Please remove files from previous years, and run archive-pubmed -scour to clear stale data," >&2
+      echo "before rerunning archive-pubmed -index" >&2
+      echo "" >&2
+    fi
+  fi
+
+  for fl in *.xml.gz
+  do
+    base=${fl%.xml.gz}
+    # skip if sentinel present or if file is present but empty
+    if [ ! -f "${archiveBase}/Sentinels/$base.snt" ] && [ -s "$fl" ]
+    then
+      PMStash "$fl"
+    fi
+  done
+
+  echo "Refreshing Versioned Records"
+  pm-refresh "${archiveBase}" "${indexBase}" "${invertBase}"
+fi

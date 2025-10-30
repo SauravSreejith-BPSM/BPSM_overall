@@ -1,0 +1,46 @@
+# Public domain notice for all NCBI EDirect scripts is located at:
+# https://www.ncbi.nlm.nih.gov/books/NBK179288/#chapter6.Public_Domain_Notice
+
+# populate-pmc
+
+PMCStash() {
+
+  fl="$1"
+
+  base=${fl%.tar.gz}
+  echo "$base" >&2
+
+  tar -xOzf "$fl" --to-stdout |
+  pmc2info |
+  transmute -mixed -format |
+  rchive -gzip -db "$dbase" \
+    -archive "${archiveBase}" "${indexBase}" "${invertBase}" \
+    -index UID -pattern PMCInfo
+
+  touch "${archiveBase}/Sentinels/$base.snt"
+}
+
+if [ -d "${sourceBase}" ]
+then
+  cd "${sourceBase}"
+
+  for flt in baseline incr
+  do
+    for dir in oa_comm oa_noncomm oa_other
+    do
+      for fl in *.tar.gz
+      do
+        echo "$fl" | grep "$flt" | grep "$dir"
+      done |
+      while read fl
+      do
+        base=${fl%.tar.gz}
+        # skip if sentinel present or if file is present but empty
+        if [ ! -f "${archiveBase}/Sentinels/$base.snt" ] && [ -s "$fl" ]
+        then
+          PMCStash "$fl"
+        fi
+      done
+    done
+  done
+fi

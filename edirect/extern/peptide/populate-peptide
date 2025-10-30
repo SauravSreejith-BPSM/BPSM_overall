@@ -1,0 +1,114 @@
+# Public domain notice for all NCBI EDirect scripts is located at:
+# https://www.ncbi.nlm.nih.gov/books/NBK179288/#chapter6.Public_Domain_Notice
+
+# populate-peptide
+
+# archive-peptide -custom "ARC FUN PRO VRL"
+
+HighestSubfolder() {
+
+  ls -1d * | grep -v CACHE | grep -v Sentinels |
+  sed -e 's|/||g' | sort -V | tail -n 1
+}
+
+# get current maximum UID from archive, use as offset for adding new peptide domains later
+
+HighestUID() {
+
+  max_uid="0"
+
+  cd "${archiveBase}"
+
+  fst=$( HighestSubfolder )
+  if [ -n "$fst" ]
+  then
+    cd "$fst"
+    snd=$( HighestSubfolder )
+    if [ -n "$snd" ]
+    then
+      cd "$snd"
+      thd=$( HighestSubfolder )
+      if [ -n "$thd" ]
+      then
+        cd "$thd"
+        lastFile=$( ls -1 * | sort -V | tail -n 1 )
+        if [ -n "$lastFile" ]
+        then
+          max_uid="${lastFile%%.*}"
+        fi
+      fi
+    fi
+  fi
+
+  echo "$max_uid"
+}
+
+PeptideStash() {
+
+  fl="$1"
+
+  base=${fl%.gz}
+  pfx="${fl%%.*}"
+
+  echo "$base" >&2
+
+  cd "${archiveBase}"
+
+  lastUID="0"
+
+  lastUID=$( HighestUID )
+
+  if [ -z "$lastUID" ]
+  then
+    lastUID="0"
+  fi
+
+  cd "${sourceBase}"
+
+  gunzip -c "$fl" |
+  gbf2xml |
+  xtract -transform <( echo -e "archaea\tARC\nbacteria\tBCT\nfungi\tFUN\ninvertebrate\tINV\nvertebrate_mammalian\tMAM\nmitochondrion\tMIT\nplant\tPLN\nprotozoa\tPRO\nplasmid\tPSM\nplastid\tPST\nviral\tVRL\nvertebrate_other\tVRT\n" ) \
+    -rec PeptInfo -pattern INSDSeq -REL "+" -PROD "()" -TAX "(-)" -PFX "($pfx)" \
+    -OFS "($lastUID)" -UID -sum "&REL,&OFS" \
+    -group INSDFeature -if INSDFeature_key -equals Protein \
+      -block INSDQualifier -if INSDQualifier_name -equals product \
+        -PROD INSDQualifier_value \
+    -group INSDFeature -if INSDFeature_key -equals source \
+      -block INSDQualifier -if INSDQualifier_name -equals db_xref \
+        -and INSDQualifier_value -starts-with "taxon:" \
+          -TAX "INSDQualifier_value[taxon:|]" \
+    -group INSDSeq \
+      -wrp UID -element "&UID" \
+      -wrp Accession -element INSDSeq_primary-accession \
+      -wrp Product -first "&PROD,INSDSeq_definition" -rst \
+      -DIV -translate "&PFX" -tag Organism -atr div "&DIV" -atr taxid "&TAX" -cls -element INSDSeq_organism -end Organism -rst \
+      -wrp Sequence -element INSDSeq_sequence |
+  transmute -format |
+  rchive -gzip -db "$dbase" \
+    -archive "${archiveBase}" "${indexBase}" "${invertBase}" \
+    -index UID -pattern PeptInfo
+
+  touch "${archiveBase}/Sentinels/$base.snt"
+}
+
+# cache next files, assign sequential UIDs starting one beyond the highest current UID in archive
+
+if [ -d "${archiveBase}" ] && [ -d "${sourceBase}" ]
+then
+  cd "${sourceBase}"
+
+  for fl in *.gz
+  do
+    echo "$fl"
+  done |
+  sort -V |
+  while read fl
+  do
+    base=${fl%.gz}
+    # skip if sentinel present or if file is present but empty
+    if [ ! -f "${archiveBase}/Sentinels/$base.snt" ] && [ -s "$fl" ]
+    then
+      ( PeptideStash "$fl" )
+    fi
+  done
+fi

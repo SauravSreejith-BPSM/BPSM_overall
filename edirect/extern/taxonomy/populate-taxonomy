@@ -1,0 +1,13 @@
+# Public domain notice for all NCBI EDirect scripts is located at:
+# https://www.ncbi.nlm.nih.gov/books/NBK179288/#chapter6.Public_Domain_Notice
+
+# populate-taxonomy
+
+if [ -d "${extrasBase}" ]
+then
+  cd "${extrasBase}"
+
+  rchive -gzip -db "$dbase" -input "taxoninfo.xml" \
+    -archive "${archiveBase}" "${indexBase}" "${invertBase}" \
+    -index TaxID -pattern "TaxonInfo" < /dev/null
+fi
