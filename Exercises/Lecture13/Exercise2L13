@@ -15,7 +15,7 @@ counter = 0
 
 with open('Exercise_coding_sequence.fasta','w') as fullcoding:
 
- fullcoding.write('Lecture13_exercise2')
+ fullcoding.write('Lecture13_exercise2 \n')
  for exons in exon_input:
   counter += 1
   start= int(exons.split(',')[0])-1

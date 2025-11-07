@@ -6,11 +6,11 @@ import os,subprocess,shutil
 
 local_seq= open("plain_genomic_seq.txt").read().rstrip().upper()
 
-remote_seq= open("lecture12new.fasta").read().rstrip().upper()
+remote_seq= open("lecture12.fasta").read().rstrip().upper()
 
 print (open("plain_genomic_seq.txt").read())
 
-print (open("lecture12new.fasta").read())
+print (open("lecture12.fasta").read())
 
 #remove all non-protein related bases
 
@@ -34,6 +34,12 @@ local_seq_noncoding2 = local_seq[91:]
 print (remote_seq_exon)
 
 print (local_seq_exon)
+
+exons_blast = open("exons_blast.fasta","w")
+exons_blast.write(">local seq exon" + str(len(local_seq_exon)) + "\n" + local_seq_exon + "\n")
+exons_blast.write(">remote seq exon" + str(len(remote_seq_exon)) + "\n" + remote_seq_exon + "\n")
+exons_blast.close()
+print(open("exons_blast.fasta").read())
 
 
 
